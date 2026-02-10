@@ -5,8 +5,7 @@ import os
 import json
 import random
 import uuid
-import socket
-from   apscheduler.schedulers.background  import   BackgroundScheduler
+import socket 
 from datetime import datetime, timezone
 from  decimal    import  Decimal
 import  math
@@ -116,10 +115,20 @@ def make_quiz_key(pdf_list):
 # ======================================================
 @app.route("/upload_pdfs/", methods=["POST"])
 def upload_pdfs():
-    if "files" not in request.files:
-        return jsonify({"error": "No files part in request"}), 400
+    # if "file" not in request.files:
+    #     print("request.body  ",request.files)
+    #     return jsonify({"error": "No files part in request"}), 400
+    
+       
 
-    files = request.files.getlist("files")
+    # files = request.files.getlist("file")
+
+    if not request.files:
+        print("request.files:", request.files)
+        return jsonify({"error": "No files received"}), 400
+
+    files = list(request.files.values())
+    print("list(request.files.values())  :", files)
     if not files:
         return jsonify({"error": "No files uploaded"}), 400
 
@@ -377,182 +386,6 @@ def save_quiz_json_to_db(candidate_id, json_file_path,quiz_id):
 
 
  
-def   sched_score_saq_questions(quiz_id):
-
-    print("sched_score_saq_questions  quiz_id ",quiz_id)
-
-    saq_questions = CandidateQuizQuestion.query.filter_by(
-        quiz_id=quiz_id,
-        question_type="SAQ"
-    ).all()
-
-    total_obt_score  =  0.00
- 
-
-    for q in saq_questions:
-
-        if not q.user_answer:
-            continue
-
-        eval_result = evaluate_saq(
-            user_answer=q.user_answer,
-            correct_answer=q.answer_text,
-            question=q.question_text
-        )
-        eval_result_score =  eval_result["score"] 
-
-        total_obt_score =  total_obt_score  +    eval_result_score
-
-        q.its_score = eval_result_score
-
-    db.session.commit()
-
-    return  total_obt_score
-
-
-
-# ----------------- Task Function -----------------
-def process_candidate_eval():
-    with app.app_context():  # 🔑 Important: provides Flask context for DB operations
-        print(f"[{datetime.now(timezone.utc)}] Running  process_candidate_eval...")
-
-        # Step 1: Get CandidateEvalAI records to process
-        pending_records = CandidateEvalAI.query.filter_by(
-            to_pickup=True,
-            picked_up=False,
-            completed=False
-        ).all()
-
-        evaluation_pending_records = CandidateEvalAI.query.filter_by(
-            candidate_attempted=True,
-            evaluation_picked_up=False,
-            evaluation_completed  = False
-        ).all()
-
-        if  evaluation_pending_records:
-
-            for  record in  evaluation_pending_records:
-                try: 
-                    record.evaluation_picked_up = True
-                    db.session.commit()
-                    print(f"Evaluation  Picked up  and  updating  picked_up  for  candidate  id  {record.candidate_id}   and   CandidateEvalAI id: {record.id}")
-                except Exception as e:
-                    print(f"Evaluation  Erro   updating  picked_up  for  candidate  id  {record.candidate_id}   and    CandidateEvalAI id {record.id}: {str(e)}")
-                    record.evaluation_progress_error_occured = True
-                    db.session.commit() 
-
-            for  record  in  evaluation_pending_records:
-                try:
-                    total_obt_score =  sched_score_saq_questions(record.id)
-                    eva_obt_score  =   Decimal(record.obt_score)  + Decimal(total_obt_score)
-                    record.obt_score =   eva_obt_score
-                    eval_obt_perc  =      Decimal((math.trunc((eva_obt_score/ record.tot_score) * 100) / 100))  *  Decimal("100")
-                    # print("bot_obt_perc   as  here  ",bot_obt_perc  ,  "   type   ",type(bot_obt_perc))
-                    if   Decimal(eval_obt_perc)  >  Decimal("70"):
-                        record.candidate_passed  =  True 
-
-
-                    eval_obt_perc = str(eval_obt_perc) + "%"
-                    record.obt_perc  =  eval_obt_perc
-                    record.evaluation_completed  =  True
-                    db.session.commit() 
-                except Exception as e:
-                    print(f"Evaluation  Error  in  processing  for  candidate  id  {record.candidate_id}   and  CandidateEvalAI id {record.id}: {str(e)}")
-                    record.evaluation_progress_error_occured = True
-                    record.evaluation_picked_up  =  False
-                    db.session.commit() 
-        else:
-            print("No   evaluation_pending_records")
-
-        if  pending_records:
-
-            for record in pending_records:
-                try: 
-                    record.picked_up = True
-                    db.session.commit()
-                    print(f"Picked up  and  updating  picked_up  for  candidate  id  {record.candidate_id}   and   CandidateEvalAI id: {record.id}")
-                except Exception as e:
-                    print(f"Erro   updating  picked_up  for  candidate  id  {record.candidate_id}   and    CandidateEvalAI id {record.id}: {str(e)}")
-                    record.progress_error_occured = True
-                    db.session.commit() 
-            
-
-            for record in pending_records:
-                try: 
-
-                    # Step 3: Fetch related CandidateResearch records
-                    candidate_id = record.candidate_id
-                    research_records = CandidateResearch.query.filter_by(candidate_id=candidate_id).all()
-                    if   research_records: 
-
-                        pdf_paths =  []
-
-                        for research in research_records:
-                            file_name = os.path.basename(research.file)
-                            file_path = os.path.join(RESEARCH_FILES_ROOT, file_name)
-                            file_path = os.path.abspath(file_path)  # ✅ ensure absolute path
-                            print(f"Absolute PDF path: {file_path}")
-
-                            if os.path.isfile(file_path) and file_path.lower().endswith(".pdf"):
-                                print(f"Processing PDF: {file_path}")
-                                pdf_paths.append(file_path)
-                            else:
-                                print(f"File does not exist or not a PDF: {file_path}") 
-                             
-
-                        print("pdf_paths  ",pdf_paths)
-
-                        
-                        
-
-                        # ======================================================
-                        # Process ALL PDFs together → global clusters → single LLM call
-                        # ======================================================
-                        quiz_data = generate_quiz_from_pdf(
-                            pdf_path=pdf_paths,
-                            max_questions=MAX_QUESTIONS,
-                            save=False
-                        )
-
-                        combined_quiz = quiz_data.get("quiz", [])
-
-                        for idx, q in enumerate(combined_quiz):
-                            if "id" not in q or not q["id"]:
-                                q["id"] = f"q_{idx}"
-
-                        quiz_key = make_quiz_key(pdf_paths)
-                        json_file_name = save_quiz(quiz_key, combined_quiz)
-
-                        print("json_file_name  ",json_file_name)
-
-                        json_file_path = os.path.join(QUIZ_JSON_FOLDER, json_file_name)
-
-                        questions_count = save_quiz_json_to_db(candidate_id, json_file_path,record.id)
-                        record.tot_score =   Decimal(questions_count  *  10)
-                        record.completed  =  True
-                        db.session.commit() 
-                    else:
-                        print(f"No  research  records   for  candidate  id  {record.candidate_id}   and  CandidateEvalAI id {record.id}")
-
-                    print(f"Success  in  processing  for  candidate  id  {record.candidate_id}   and  CandidateEvalAI id {record.id}")
-
-                except Exception as e:
-                    print(f"Error  in  processing  for  candidate  id  {record.candidate_id}   and  CandidateEvalAI id {record.id}: {str(e)}")
-                    record.progress_error_occured = True
-                    record.picked_up  =  False
-                    db.session.commit() 
-        else:
-            print("no  pending_records")
-
-# ----------------- Scheduler Setup -----------------
-scheduler = BackgroundScheduler()
-scheduler.add_job(func=process_candidate_eval, trigger="interval", minutes=3)
-scheduler.start()
-
-# Shut down scheduler when exiting Flask
-import atexit
-atexit.register(lambda: scheduler.shutdown())
-
 
 # ======================================================
 if __name__ == "__main__":
