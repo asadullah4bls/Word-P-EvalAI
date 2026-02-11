@@ -9,6 +9,10 @@ import socket
 from datetime import datetime, timezone
 from  decimal    import  Decimal
 import  math
+import atexit
+from   apscheduler.schedulers.background  import   BackgroundScheduler
+from  sqlalchemy   import  create_engine
+from sqlalchemy import text
 # ----------------------------
 # Project imports
 # ----------------------------
@@ -28,9 +32,11 @@ from  Backend.models.candidate_models   import  CandidateResearch,  CandidateEva
 app = Flask(__name__)
 CORS(app)
 
-app.config.from_object(Config)
-
-db.init_app(app) 
+engine = create_engine(
+    "mysql+pymysql://root:root@127.0.0.1:10005/local",
+    pool_pre_ping=True,
+    pool_recycle=3600
+)
 
 FLASK_ROOT = os.path.dirname(os.path.abspath(__file__))  # D:\BLS_Main\Live_dev\AI-Quiz-Generator-Microservice\Backend
 DJANGO_ROOT = os.path.abspath(os.path.join(FLASK_ROOT, "../../IAE-CRM"))  # resolves ..\.. properly
@@ -385,7 +391,180 @@ def save_quiz_json_to_db(candidate_id, json_file_path,quiz_id):
 
 
 
- 
+# ----------------- Task Function -----------------
+def   old_xps_svls():
+    try:
+        print(f"[{datetime.now(timezone.utc)}] Running  process_candidate_eval...")
+        with engine.connect() as conn:
+
+            quizzes = conn.execute("""
+                SELECT id, user_id
+                FROM wp_ai_quizzes
+                WHERE quiz_attempted=1
+                AND evaluated=0
+                AND evaluation_picked=0
+            """).fetchall()
+
+            if  quizzes:
+                print("sched  quizzes   for  eval")
+                for quiz in quizzes:
+                    conn.execute("""
+                        UPDATE wp_ai_quizzes
+                        SET evaluation_picked=1
+                        WHERE id=%s
+                    """, (quiz.id,))
+
+                for quiz in quizzes:
+
+                    questions = conn.execute(f"""
+                        SELECT *
+                        FROM wp_ai_questions
+                        WHERE quiz_id={quiz.id}
+                    """).fetchall()
+
+
+                    print("quiz id  ",quiz.id  ,"  questions  ",questions)
+
+                    if   questions:
+                        for   q   in   questions:  
+                            if not q.user_answer:
+                                continue
+
+                            eval_result = evaluate_saq(
+                                user_answer=q.user_answer,
+                                correct_answer=q.correct_answer,
+                                question=q.question
+                            )
+                            eval_result_score =  eval_result["score"] 
+
+                            conn.execute("""
+                                UPDATE wp_ai_questions
+                                SET its_score=%s
+                                WHERE id=%s
+                            """, (eval_result_score, q.id))
+
+                        conn.execute("""
+                            UPDATE wp_ai_quizzes
+                            SET evaluated=1
+                            WHERE id=%s
+                        """, (quiz.id,))
+
+                        
+
+
+
+                    # total_obt_score =  total_obt_score  +    eval_result_score
+
+                    # q.its_score = eval_result_score
+
+                    # evaluate_quiz_llm(conn, quiz.id, questions) 
+            else:
+
+                print("sched  not   quizzes   for  eval")
+    except   Exception  as   e: 
+        print("Exception  in  sched  :  ",e)
+       
+
+        
+
+
+
+
+
+
+
+def process_candidate_eval():
+
+    try:
+        print(f"[{datetime.now(timezone.utc)}] Running process_candidate_eval...")
+
+        with engine.begin() as conn:   # auto-commit transaction
+
+            quizzes = conn.execute(text("""
+                SELECT id, user_id
+                FROM wp_ai_quizzes
+                WHERE quiz_attempted=1
+                AND evaluated=0
+                AND evaluation_picked=0
+            """)).fetchall()
+
+            if not quizzes:
+                print("sched not quizzes for eval")
+                return
+
+            print("sched quizzes for eval")
+
+
+            for quiz in quizzes:
+
+                # lock row
+                conn.execute(
+                    text("""
+                        UPDATE wp_ai_quizzes
+                        SET evaluation_picked=1
+                        WHERE id=:id
+                    """),
+                    {"id": quiz.id}
+                )
+
+            for quiz in quizzes: 
+
+                questions = conn.execute(
+                    text("""
+                        SELECT *
+                        FROM wp_ai_questions
+                        WHERE quiz_id=:qid
+                    """),
+                    {"qid": quiz.id}
+                ).fetchall()
+
+                print("quiz id", quiz.id, "questions", len(questions))
+
+                for q in questions:
+
+                    if not q.user_answer:
+                        continue
+
+                    eval_result = evaluate_saq(
+                        user_answer=q.user_answer,
+                        correct_answer=q.correct_answer,
+                        question=q.question
+                    )
+
+                    conn.execute(
+                        text("""
+                            UPDATE wp_ai_questions
+                            SET its_score=:score
+                            WHERE id=:id
+                        """),
+                        {
+                            "score": eval_result["score"],
+                            "id": q.id
+                        }
+                    )
+
+                conn.execute(
+                    text("""
+                        UPDATE wp_ai_quizzes
+                        SET evaluated=1
+                        WHERE id=:id
+                    """),
+                    {"id": quiz.id}
+                )
+
+    except Exception as e:
+        print("Exception in sched:", e)
+
+
+
+# ----------------- Scheduler Setup -----------------
+scheduler = BackgroundScheduler()
+scheduler.add_job(func=process_candidate_eval, trigger="interval", minutes=3)
+scheduler.start()
+
+
+atexit.register(lambda: scheduler.shutdown())
+
 
 # ======================================================
 if __name__ == "__main__":
