@@ -4,6 +4,7 @@ from Quiz.quiz_generator import generate_quiz_from_pdf
 from  sqlalchemy   import  create_engine
 import json
 from datetime import datetime, timezone
+import  os
 from sqlalchemy import text
 engine = create_engine(
     "mysql+pymysql://wpflask:wpflaskpass@172.23.147.16:10005/local",
