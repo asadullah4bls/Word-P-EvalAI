@@ -34,7 +34,7 @@ app = Flask(__name__)
 CORS(app)
 
 engine = create_engine(
-    "mysql+pymysql://wpflask:wpflaskpass@172.17.128.1:10005/local",
+    "mysql+pymysql://wpflask:wpflaskpass@172.23.147.16:10005/local",
     pool_pre_ping=True,
 )
 
