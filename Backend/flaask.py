@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 from PyPDF2 import PdfReader
 from flask_cors import CORS
+from pathlib import Path
 import os
 import json
 import random
@@ -22,7 +23,7 @@ from Quiz.saving_quiz import save_quiz, save_user_attempt, load_existing_quiz
 from Quiz.qa_evaluator import evaluate_saq
 from Backend.initials import is_english_file, is_pdf_file, is_invalid_file
 
-
+from   Backend.celery_utils import  quiz_gen
 from   Backend.config   import  Config
 from  Backend.extensions  import  db
 from  Backend.models.candidate_models   import  CandidateResearch,  CandidateEvalAI  ,  CandidateQuizQuestion
@@ -93,6 +94,10 @@ def test_db():
 
 # UPLOAD_FOLDER = r"C:\BLS\EvalAI8\Uploads"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR_CELERY = Path(__file__).resolve().parent
+print("BASE_DIR_CELERY  ", BASE_DIR_CELERY)
+UPLOAD_FOLDER_CELERY = BASE_DIR_CELERY.parent / "Uploads"
+print("UPLOAD_FOLDER_CELERY   ", UPLOAD_FOLDER_CELERY)
 UPLOAD_FOLDER =  os.path.join(BASE_DIR, "../Uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 MAX_QUESTIONS = 20
@@ -117,138 +122,69 @@ def make_quiz_key(pdf_list):
 
 @app.route("/upload_pdfs/", methods=["POST"])
 def upload_pdfs():
- 
-    print(f"[{datetime.now(timezone.utc)}] Upload endpoint hit")
- 
-    if not request.files:
-        print("request.files:", request.files)
-        return jsonify({"error": "No files received"}), 400
- 
-    files = list(request.files.values())
-    print("list(request.files.values())  :", files)
-    if not files:
-        return jsonify({"error": "No files uploaded"}), 400
-   
-    user_id = request.form.get("user_id")
- 
-    print("user_id  ",user_id)
- 
-    pdf_paths = []
- 
-    for file in files:
-        # 1️⃣ PDF check
-        if not is_pdf_file(file):
-            return jsonify({
-                "error": "invalid_file",
-                "message": f"File '{file.filename}' is not a valid PDF",
-                "files": [file.filename]
-            }), 200
- 
-        pdf_path = os.path.join(UPLOAD_FOLDER, file.filename)
-        file.save(pdf_path)
- 
-        # ✅ 1.5️⃣ Empty / corrupt PDF check (BEST placement)
-        if is_invalid_file(pdf_path):
-            return jsonify({
-                "error": "invalid_file",
-                "message": f"File '{file.filename}' is invalid",
-                "files": [file.filename]
-            }), 200
- 
-        # 3️⃣ English check (using new detector class)
-        if not is_english_file(file):
-            print("❌ Non-English file detected:", file.filename)
-            return jsonify({
-                "error": "non_english_file",
-                "message": f"File '{file.filename}' is not in English",
-                "files": [file.filename]
-            }), 200
-        print("✅ English file confirmed:", file.filename)
-        pdf_paths.append(pdf_path)
- 
-    # ======================================================
-    # Process ALL PDFs together → global clusters → single LLM call
-    # ======================================================
-    try:
- 
-        quiz_data = generate_quiz_from_pdf(
-            pdf_path=pdf_paths,
-            max_questions=MAX_QUESTIONS,
-            save=False
-        )
- 
-       
-        combined_quiz = quiz_data.get("quiz", [])
- 
-        if not combined_quiz:
-            return jsonify({"error": "No quiz generated"}), 400
- 
-        # with engine.begin() as conn:
- 
-        #     # 1️⃣ Insert quiz
-        #     result = conn.execute(
-        #         text("""
-        #             INSERT INTO wp_ai_quizzes
-        #             (pdf_names, user_id, quiz_attempted, evaluated, evaluation_picked)
-        #             VALUES (:pdf_names, :user_id, 0, 0, 0)
-        #         """),
-        #         {
-        #             "pdf_names": "Uploaded PDFs Quiz",
-        #             "user_id": user_id
-        #         }
-        #     )
- 
-        #     quiz_id = result.lastrowid
- 
- 
-        #     print("quiz_id   ",quiz_id)
- 
-        #     # 2️⃣ Insert questions
-        #     for q in combined_quiz:
- 
-        #         options_json = json.dumps(q["options"]) if "options" in q else None
-        #         correct_answer = q.get("correct_answer") or q.get("answer")
- 
-        #         conn.execute(
-        #             text("""
-        #                 INSERT INTO wp_ai_questions
-        #                 (quiz_id, question, type, options_json,
-        #                  correct_answer, explanation, source_pdf, source_cluster)
-        #                 VALUES
-        #                 (:quiz_id, :question, :type, :options_json,
-        #                  :correct_answer, :explanation, :source_pdf, :source_cluster)
-        #             """),
-        #             {
-        #                 "quiz_id": quiz_id,
-        #                 "question": q["question"],
-        #                 "type": q["type"],
-        #                 "options_json": options_json,
-        #                 "correct_answer": correct_answer,
-        #                 "explanation": q.get("explanation", ""),
-        #                 "source_pdf": q.get("source_pdf", ""),
-        #                 "source_cluster": q.get("source_cluster", "")
-        #             }
-        #         )
 
-
-        for idx, q in enumerate(combined_quiz):
-            if "id" not in q or not q["id"]:
-                q["id"] = f"q_{idx}"
-
-        quiz_key = make_quiz_key(pdf_paths)
-        save_quiz(quiz_key, combined_quiz)
+    # try:
  
-        print("succeded  quiz   save  from  flask  into  worpress")
- 
+        print(f"[{datetime.now(timezone.utc)}] Upload endpoint hit")
+    
+        if not request.files:
+            print("request.files:", request.files)
+            return jsonify({"error": "No files received"}), 400
+    
+        files = list(request.files.values())
+        print("list(request.files.values())  :", files)
+        if not files:
+            return jsonify({"error": "No files uploaded"}), 400
+    
+        user_id = request.form.get("user_id")
+    
+        print("user_id  ",user_id)
+    
+        pdf_paths = []
+    
+        for file in files:
+            # 1️⃣ PDF check
+            if not is_pdf_file(file):
+                return jsonify({
+                    "error": "invalid_file",
+                    "message": f"File '{file.filename}' is not a valid PDF",
+                    "files": [file.filename]
+                }), 200
+    
+            pdf_path = os.path.join(UPLOAD_FOLDER_CELERY, file.filename)
+            file.save(pdf_path)
+    
+            # ✅ 1.5️⃣ Empty / corrupt PDF check (BEST placement)
+            if is_invalid_file(pdf_path):
+                return jsonify({
+                    "error": "invalid_file",
+                    "message": f"File '{file.filename}' is invalid",
+                    "files": [file.filename]
+                }), 200
+    
+            # 3️⃣ English check (using new detector class)
+            if not is_english_file(file):
+                print("❌ Non-English file detected:", file.filename)
+                return jsonify({
+                    "error": "non_english_file",
+                    "message": f"File '{file.filename}' is not in English",
+                    "files": [file.filename]
+                }), 200
+            print("✅ English file confirmed:", file.filename)
+            pdf_paths.append(pdf_path)
+    
+        # ======================================================
+        # Process ALL PDFs together → global clusters → single LLM call
+        # ======================================================
+        quiz_gen.delay(pdf_paths, user_id,MAX_QUESTIONS)
         return jsonify({
             "status": "success",
             "quiz_id":  65,
-            "total_questions": len(combined_quiz)
-        })
- 
-    except Exception as e:
-        print("Exception in upload_pdfs:", e)
-        return jsonify({"error": "Server error"}), 500
+            "total_questions": 21
+        }) 
+    # except Exception as e:
+    #     print("Exception in upload_pdfs:", e)
+    #     return jsonify({"error": "Server error"}), 500
  
 
 # ======================================================
