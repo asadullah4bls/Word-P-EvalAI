@@ -221,6 +221,78 @@ def evaluate_candidate_in_api_old2(domain: str, answers: list[dict]):
     return response.choices[0].message.content
 
 
+def evaluate_candidate_in_api_with_explanations(domain: str, answers: list[dict]):
+
+    prompt = f"""
+        You are an interview evaluator.
+
+        Candidate domain: {domain}
+
+        You will receive a JSON array of objects.
+        Each object contains:
+        - id
+        - question
+        - answer
+
+        Your job:
+
+        1. Score EACH answer from 0 to 10 based on: 
+        - relevance
+        - correctness
+        - clarity
+
+        2. Add a short professional explanation explaining:
+        - Why this score was given
+        - What was correct
+        - What was missing or weak (if anything)
+
+        IMPORTANT RULES:
+        - Return ONLY JSON
+        - Do NOT return code
+        - Do NOT return markdown
+        - Do NOT explain anything
+        - Do NOT wrap in ``` blocks
+        - Do NOT create functions
+        - Do NOT change id/question/answer
+        - Only add TWO new fields:
+            - "its_score"
+            - "its_evaluation_explanation"
+
+        Explanation (its_evaluation_explanation) Rules:
+        - Keep explanation between 2 to 4 sentences
+        - Be professional and neutral
+        - Do NOT mention scoring rules explicitly
+        - Do NOT say "based on relevance/correctness/clarity"
+        - Do NOT include line breaks
+        - Keep it concise
+
+        Return the SAME array with the new field added.
+
+        INPUT JSON:
+        {answers}
+        
+        STRICT JSON REQUIREMENTS:
+        - Use double quotes only
+        - No single quotes anywhere
+        - Must be valid JSON.parse compatible
+
+    """
+
+    response = client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=[
+            {"role": "system", "content": "You output strict JSON only."},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0,
+    )
+
+    response_choices  =  response.choices[0].message.content
+    print("response_choices  (response.choices[0].message.content)     ", response_choices)
+
+    return response_choices
+
+
 def evaluate_candidate_in_api(domain: str, answers: list[dict]):
 
     prompt = f"""

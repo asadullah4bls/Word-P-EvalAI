@@ -126,6 +126,7 @@ def filter_keywords(keywords, threshold):
 # ======================================================
 def get_filtered_keywords_from_pdf(pdf_path):
     raw_keywords = extract_keywords_from_pdf(pdf_path)
+    print(f"\nraw_keywords {raw_keywords}  .")
     if not raw_keywords:
         return []
 
