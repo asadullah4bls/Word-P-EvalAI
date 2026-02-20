@@ -192,6 +192,8 @@ def upload_pdfs():
 # ======================================================
 @app.route("/upload_pdfs_old/", methods=["POST"])
 def upload_pdfs_old():
+@app.route("/upload_pdfs_old/", methods=["POST"])
+def upload_pdfs_old():
     # if "file" not in request.files:
     #     print("request.body  ",request.files)
     #     return jsonify({"error": "No files part in request"}), 400
