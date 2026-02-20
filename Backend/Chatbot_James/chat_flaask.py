@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify 
 from flask_cors import CORS
-from   Backend.Chatbot_James.chat    import  generate_questions, evaluate_candidate_in_api
+from   Backend.Chatbot_James.chat    import  generate_questions, evaluate_candidate_in_api,evaluate_candidate_in_api_with_explanations
 from   Backend.Chatbot_James.utils   import   parse_llm_questions, safe_json_loads,  clean_llm_json,validate_scores,safe_load_json
 import socket
 import  json
@@ -59,7 +59,8 @@ def evaluate_candidate_api():
 
         # print(" evaluate_candidate_api   formatted_answers  ", answers)
 
-        evaluation = evaluate_candidate_in_api(domain, answers)
+        # evaluation = evaluate_candidate_in_api(domain, answers)
+        evaluation = evaluate_candidate_in_api_with_explanations(domain, answers)
 
          
 
@@ -78,7 +79,7 @@ def evaluate_candidate_api():
             validated = validate_scores(data) 
 
             # scored_answers = safe_json_loads(evaluation)
-            # print("scored_answers  ",type(scored_answers))
+            print("validated  ",type(validated),"   ",validated)
         except json.JSONDecodeError  as   e:
             print("LLM returned invalid JSON"  ,e)
             return jsonify({
