@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from   Backend.Chatbot_James.chat    import  generate_questions, evaluate_candidate_in_api,evaluate_candidate_in_api_with_explanations
 from   Backend.Chatbot_James.utils   import   parse_llm_questions, safe_json_loads,  clean_llm_json,validate_scores,safe_load_json
+from  Backend.celery_utils2   import  store_james_quiz_wp_db
 import socket
 import  json
 
@@ -25,11 +26,13 @@ def  Generate_Chatbot_James_Questions():
     try :
         data = request.get_json()
         domain = data.get("domain")
-        print("domain  recieved   at   Generate_Chatbot_James_Questions  ",domain)
+        user_id  =  data.get("user_id")
+        print("domain  recieved   at   Generate_Chatbot_James_Questions  and  user_id ",domain,"  ",user_id)
         questions_json  =  generate_questions(domain)
         print("Raw LLM output:\n", questions_json)
         structured_questions = parse_llm_questions(questions_json)
         print("structured_questions   ",structured_questions)
+        store_james_quiz_wp_db(user_id,structured_questions)
         return  jsonify({
             "success": True,
             "questions": structured_questions
