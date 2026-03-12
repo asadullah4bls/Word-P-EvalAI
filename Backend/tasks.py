@@ -2,7 +2,7 @@ from  Backend.celery_worker import make_celery
 from Quiz.saving_quiz import save_quiz
 from Quiz.quiz_generator import generate_quiz_from_pdf
 from sqlalchemy import create_engine, text
-
+from Quiz.qa_evaluator import evaluate_saq
 from datetime import datetime, timezone
 
 import json
@@ -17,6 +17,54 @@ engine = create_engine(
     pool_pre_ping=True,
 
 )
+
+
+@celery.task(bind=True)
+def  Eval_quz_cel(quiz):
+    print(f"[{datetime.now(timezone.utc)}] Eval_quz_cel {quiz.id}")
+    with engine.begin() as conn:
+        questions = conn.execute(
+            text("""
+                SELECT *
+                FROM wp_ai_questions
+                WHERE quiz_id=:qid
+            """),
+            {"qid": quiz.id}
+        ).fetchall()
+
+        print("questions", len(questions))
+
+        for q in questions:
+
+            if not q.user_answer:
+                continue
+
+            eval_result = evaluate_saq(
+                user_answer=q.user_answer,
+                correct_answer=q.correct_answer,
+                question=q.question
+            )
+
+            conn.execute(
+                text("""
+                    UPDATE wp_ai_questions
+                    SET its_score=:score
+                    WHERE id=:id
+                """),
+                {
+                    "score": eval_result["score"],
+                    "id": q.id
+                }
+            )
+
+        conn.execute(
+            text("""
+                UPDATE wp_ai_quizzes
+                SET evaluated=1
+                WHERE id=:id
+            """),
+            {"id": quiz.id}
+        )
 
 
 def  store_james_quiz_wp_db(user_id,questions):

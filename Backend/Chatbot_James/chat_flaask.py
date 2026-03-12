@@ -43,6 +43,28 @@ def  Generate_Chatbot_James_Questions():
             "success": False
         })
 
+@app.route("/generate_james_bot_qs/", methods=["POST"], strict_slashes=False)
+def  Generate_Chatbot_James_Ques():
+    try :
+        data = request.get_json()
+        domain = data.get("domain")
+        user_id  =  data.get("user_id")
+        print("domain  recieved   at   Generate_Chatbot_James_Questions  and  user_id ",domain,"  ",user_id)
+        questions_json  =  generate_questions(domain)
+        print("Raw LLM output:\n", questions_json)
+        structured_questions = parse_llm_questions(questions_json)
+        print("structured_questions   ",structured_questions)
+        store_james_quiz_wp_db(user_id,structured_questions)
+        return  jsonify({
+            "success": True,
+            "questions": structured_questions
+        })
+    except   Exception  as   e:
+        print("Failed  Generate_Chatbot_James_Questions   . ",e)
+        return  jsonify({
+            "success": False
+        })
+
 
 @app.route("/evaluate_candidate/", methods=["POST"])
 def evaluate_candidate_api():

@@ -24,7 +24,7 @@ from Quiz.saving_quiz import save_quiz, save_user_attempt, load_existing_quiz
 from Quiz.qa_evaluator import evaluate_saq
 from Backend.initials import is_english_file, is_pdf_file, is_invalid_file
 
-from  Backend.tasks import quiz_gen
+from  Backend.tasks import quiz_gen, Eval_quz_cel
  
 
 from   Backend.config   import  Config
@@ -587,49 +587,50 @@ def process_candidate_eval():
                 )
 
             for quiz in quizzes: 
+                Eval_quz_cel.delay(quiz)
 
-                questions = conn.execute(
-                    text("""
-                        SELECT *
-                        FROM wp_ai_questions
-                        WHERE quiz_id=:qid
-                    """),
-                    {"qid": quiz.id}
-                ).fetchall()
+                # questions = conn.execute(
+                #     text("""
+                #         SELECT *
+                #         FROM wp_ai_questions
+                #         WHERE quiz_id=:qid
+                #     """),
+                #     {"qid": quiz.id}
+                # ).fetchall()
 
-                print("quiz id", quiz.id, "questions", len(questions))
+                # print("quiz id", quiz.id, "questions", len(questions))
 
-                for q in questions:
+                # for q in questions:
 
-                    if not q.user_answer:
-                        continue
+                #     if not q.user_answer:
+                #         continue
 
-                    eval_result = evaluate_saq(
-                        user_answer=q.user_answer,
-                        correct_answer=q.correct_answer,
-                        question=q.question
-                    )
+                #     eval_result = evaluate_saq(
+                #         user_answer=q.user_answer,
+                #         correct_answer=q.correct_answer,
+                #         question=q.question
+                #     )
 
-                    conn.execute(
-                        text("""
-                            UPDATE wp_ai_questions
-                            SET its_score=:score
-                            WHERE id=:id
-                        """),
-                        {
-                            "score": eval_result["score"],
-                            "id": q.id
-                        }
-                    )
+                #     conn.execute(
+                #         text("""
+                #             UPDATE wp_ai_questions
+                #             SET its_score=:score
+                #             WHERE id=:id
+                #         """),
+                #         {
+                #             "score": eval_result["score"],
+                #             "id": q.id
+                #         }
+                #     )
 
-                conn.execute(
-                    text("""
-                        UPDATE wp_ai_quizzes
-                        SET evaluated=1
-                        WHERE id=:id
-                    """),
-                    {"id": quiz.id}
-                )
+                # conn.execute(
+                #     text("""
+                #         UPDATE wp_ai_quizzes
+                #         SET evaluated=1
+                #         WHERE id=:id
+                #     """),
+                #     {"id": quiz.id}
+                # )
 
     except Exception as e:
         print("Exception in sched:", e)
