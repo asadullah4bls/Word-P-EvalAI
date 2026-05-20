@@ -36,10 +36,19 @@ from  Backend.models.candidate_models   import  CandidateResearch,  CandidateEva
 app = Flask(__name__)
 CORS(app)
 celery = make_celery(app)
+
 engine = create_engine(
-    "mysql+pymysql://wpflask:wpflaskpass@172.17.128.1:10005/local",
+
+    "mysql+pymysql://wpflask:wpflaskpass@127.0.0.1:10005/local",
+
     pool_pre_ping=True,
+
 )
+
+# engine = create_engine(
+#     "mysql+pymysql://wpflask:wpflaskpass@172.17.128.1:10005/local",
+#     pool_pre_ping=True,
+# )
 
 FLASK_ROOT = os.path.dirname(os.path.abspath(__file__))  # D:\BLS_Main\Live_dev\AI-Quiz-Generator-Microservice\Backend
 DJANGO_ROOT = os.path.abspath(os.path.join(FLASK_ROOT, "../../IAE-CRM"))  # resolves ..\.. properly
@@ -587,7 +596,7 @@ def process_candidate_eval():
                 )
 
             for quiz in quizzes: 
-                Eval_quz_cel.delay(quiz)
+                Eval_quz_cel.delay(quiz.id)
 
                 # questions = conn.execute(
                 #     text("""

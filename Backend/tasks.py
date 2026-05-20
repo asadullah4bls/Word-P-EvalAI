@@ -1,27 +1,38 @@
 from  Backend.celery_worker import make_celery
 from Quiz.saving_quiz import save_quiz
-from Quiz.quiz_generator import generate_quiz_from_pdf
+# from Quiz.quiz_generator import generate_quiz_from_pdf
 from sqlalchemy import create_engine, text
-from Quiz.qa_evaluator import evaluate_saq
+# from Quiz.qa_evaluator import evaluate_saq
 from datetime import datetime, timezone
 
 import json
 import  os
  
 celery = make_celery()
- 
+
 engine = create_engine(
 
-    "mysql+pymysql://wpflask:wpflaskpass@172.17.128.1:10005/local",
+    "mysql+pymysql://wpflask:wpflaskpass@127.0.0.1:10005/local",
 
     pool_pre_ping=True,
 
 )
+ 
+# engine = create_engine(
+
+#     "mysql+pymysql://wpflask:wpflaskpass@172.17.128.1:10005/local",
+
+#     pool_pre_ping=True,
+
+# )
 
 
 @celery.task(bind=True)
-def  Eval_quz_cel(quiz):
-    print(f"[{datetime.now(timezone.utc)}] Eval_quz_cel {quiz.id}")
+def  Eval_quz_cel(self,quiz_id):
+    print(f"[{datetime.now(timezone.utc)}] Eval_quz_cel {quiz_id}")
+
+    from Quiz.qa_evaluator import evaluate_saq
+
     with engine.begin() as conn:
         questions = conn.execute(
             text("""
@@ -29,7 +40,7 @@ def  Eval_quz_cel(quiz):
                 FROM wp_ai_questions
                 WHERE quiz_id=:qid
             """),
-            {"qid": quiz.id}
+            {"qid": quiz_id}
         ).fetchall()
 
         print("questions", len(questions))
@@ -63,7 +74,7 @@ def  Eval_quz_cel(quiz):
                 SET evaluated=1
                 WHERE id=:id
             """),
-            {"id": quiz.id}
+            {"id": quiz_id}
         )
 
 
@@ -142,6 +153,8 @@ def  store_james_quiz_wp_db(user_id,questions):
 def quiz_gen(self, pdf_paths, user_id, MAX_QUESTIONS):
  
     print(f"[{datetime.now(timezone.utc)}] quiz_gen celery {user_id}")
+
+    from Quiz.quiz_generator import generate_quiz_from_pdf
  
     quiz_data = generate_quiz_from_pdf(
 
