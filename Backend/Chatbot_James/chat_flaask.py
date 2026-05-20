@@ -32,7 +32,7 @@ def  Generate_Chatbot_James_Questions():
         print("Raw LLM output:\n", questions_json)
         structured_questions = parse_llm_questions(questions_json)
         print("structured_questions   ",structured_questions)
-        store_james_quiz_wp_db(user_id,structured_questions)
+        #store_james_quiz_wp_db(user_id,structured_questions)
         return  jsonify({
             "success": True,
             "questions": structured_questions
@@ -54,7 +54,7 @@ def  Generate_Chatbot_James_Ques():
         print("Raw LLM output:\n", questions_json)
         structured_questions = parse_llm_questions(questions_json)
         print("structured_questions   ",structured_questions)
-        store_james_quiz_wp_db(user_id,structured_questions)
+        #store_james_quiz_wp_db(user_id,structured_questions)
         return  jsonify({
             "success": True,
             "questions": structured_questions

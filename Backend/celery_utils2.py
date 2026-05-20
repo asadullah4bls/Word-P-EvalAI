@@ -24,9 +24,11 @@ def  store_james_quiz_wp_db(user_id,questions):
             # 2️⃣ Get chatbot record
             chatbot = conn.execute(
                 text("""
-                    SELECT id 
-                    FROM wp_chatbot_james 
+                    SELECT id
+                    FROM wp_chatbot_james
                     WHERE user_id = :user_id
+                    ORDER BY id DESC
+                    LIMIT 1
                 """),
                 {"user_id": user_id}
             ).fetchone()
