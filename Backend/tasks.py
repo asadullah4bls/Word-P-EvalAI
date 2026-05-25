@@ -28,7 +28,101 @@ engine = create_engine(
 
 
 @celery.task(bind=True)
-def  Eval_quz_cel(self,quiz_id):
+def Eval_quz_cel(self, quiz_id):
+
+    print(f"[{datetime.now(timezone.utc)}] Eval_quz_cel {quiz_id}")
+
+    from Quiz.qa_evaluator import evaluate_saq
+
+    with engine.begin() as conn:
+
+        questions = conn.execute(
+            text("""
+                SELECT *
+                FROM wp_ai_questions
+                WHERE quiz_id = :qid
+            """),
+            {"qid": quiz_id}
+        ).fetchall()
+
+        print("questions", len(questions))
+
+        total_obtained_score = 0
+        total_possible_score = len(questions) * 10
+
+        for q in questions:
+
+            if not q.user_answer:
+                continue
+
+            eval_result = evaluate_saq(
+                user_answer=q.user_answer,
+                correct_answer=q.correct_answer,
+                question=q.question
+            )
+
+            question_score = float(eval_result["score"])
+
+            total_obtained_score += question_score
+
+            conn.execute(
+                text("""
+                    UPDATE wp_ai_questions
+                    SET its_score = :score
+                    WHERE id = :id
+                """),
+                {
+                    "score": question_score,
+                    "id": q.id
+                }
+            )
+
+        # percentage
+        percentage = 0
+
+        if total_possible_score > 0:
+
+            percentage = (
+                total_obtained_score
+                / total_possible_score
+            ) * 100
+
+        percentage_str = f"{percentage:.2f}%"
+
+        # pass/fail
+        passed = 1 if percentage >= 70 else 0
+
+        # update quiz table
+        conn.execute(
+            text("""
+                UPDATE wp_ai_quizzes
+
+                SET
+                    evaluated = 1,
+                    bot_obt_score = :obt,
+                    bot_tot_score = :tot,
+                    bot_obt_perc = :perc,
+                    bot_scre_passed = :passed
+
+                WHERE id = :id
+            """),
+            {
+                "obt": round(total_obtained_score, 2),
+                "tot": round(total_possible_score, 2),
+                "perc": percentage_str,
+                "passed": passed,
+                "id": quiz_id
+            }
+        )
+
+        print(
+            f"Quiz {quiz_id} evaluated | "
+            f"Score: {total_obtained_score}/{total_possible_score} | "
+            f"{percentage_str}"
+        )
+
+
+def  Eval_quz_cel_withut_scre(self,quiz_id):
     print(f"[{datetime.now(timezone.utc)}] Eval_quz_cel {quiz_id}")
 
     from Quiz.qa_evaluator import evaluate_saq
@@ -239,6 +333,63 @@ def quiz_gen(self, pdf_paths, user_id, MAX_QUESTIONS):
                     "source_pdf": q.get("source_pdf", ""),
 
                     "source_cluster": q.get("source_cluster", "")
+
+                }
+
+            )
+        
+        """
+        ==========================================
+        DECREMENT ai_quiz_request ONLY IF > 0
+        ==========================================
+        """
+
+        current_request_count = conn.execute(
+
+            text("""
+
+                SELECT meta_value
+
+                FROM wp_usermeta
+
+                WHERE user_id = :user_id
+                AND meta_key = 'ai_quiz_request'
+
+                LIMIT 1
+
+            """),
+
+            {
+                "user_id": user_id
+            }
+
+        ).scalar()
+
+        current_request_count = int(
+            current_request_count or 0
+        )
+
+        if current_request_count > 0:
+
+            conn.execute(
+
+                text("""
+
+                    UPDATE wp_usermeta
+
+                    SET meta_value = :new_value
+
+                    WHERE user_id = :user_id
+                    AND meta_key = 'ai_quiz_request'
+
+                """),
+
+                {
+
+                    "new_value":
+                        current_request_count - 1,
+
+                    "user_id": user_id
 
                 }
 
