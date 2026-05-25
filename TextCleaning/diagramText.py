@@ -1,6 +1,6 @@
 import fitz  # PyMuPDF
 from typing import List
-import easyocr
+#import easyocr
 import numpy as np
 from sklearn.cluster import DBSCAN
 from collections import defaultdict
@@ -10,7 +10,45 @@ import re
 # ---------------------------------------
 # GLOBAL: Load EasyOCR reader only once.
 # ---------------------------------------
-OCR_READER = easyocr.Reader(['en'], gpu=True)
+# OCR_READER = easyocr.Reader(['en'], gpu=True)
+
+import requests
+
+API_KEY = "K82659735388957"
+
+
+def extract_text_from_image(image_path):
+
+    with open(image_path, "rb") as f:
+
+        response = requests.post(
+            "https://api.ocr.space/parse/image",
+            files={"file": f},
+            data={
+                "apikey": API_KEY,
+                "language": "eng",
+                "isOverlayRequired": False,
+                "OCREngine": 2
+            }
+        )
+
+    result = response.json()
+
+    if result.get("IsErroredOnProcessing"):
+        print("OCR Error:", result)
+        return ""
+
+    parsed_results = result.get("ParsedResults")
+
+    if not parsed_results:
+        return ""
+
+    extracted_text = "\n".join(
+        r.get("ParsedText", "")
+        for r in parsed_results
+    )
+
+    return extracted_text
 
 def clean_ocr_text(text: str) -> str:
     """
@@ -115,7 +153,9 @@ def extract_from_pdf(pdf_path: str, min_width=150, min_height=150) -> List[str]:
                 continue
 
             # OCR with bounding boxes
-            ocr_results = OCR_READER.readtext(img_cv, detail=1)
+            #ocr_results = OCR_READER.readtext(img_cv, detail=1)
+
+            ocr_results = extract_text_from_image(img_cv)
 
             if not ocr_results:
                 continue

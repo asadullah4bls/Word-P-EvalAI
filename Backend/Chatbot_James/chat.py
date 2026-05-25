@@ -29,7 +29,7 @@ def generate_questions(domain: str):
         You are an interviewer. The user's domain is: {domain}
 
         Ask the user **domain-specific questions** in three categories: skills, experience, and academic background.
-        For each category, ask **2 easy, 2 medium, and 2 hard questions**.
+        For each category, ask **1 easy, 1 medium, and 1 hard questions**.
 
         Definitions:
         - Easy: Basic, factual questions to assess general knowledge or familiarity.
